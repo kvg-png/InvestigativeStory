@@ -1,0 +1,122 @@
+---
+title: "wage labor violations"
+author: "team"
+date: "2025-03-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+#Load libraries
+
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("readxl")
+library("readxl")
+library("plyr")
+library(tidyr)
+library(dplyr)
+library(sf)
+library(ggplot2)
+library(leaflet)
+library(tidyverse)
+
+```
+
+
+```{r}
+
+# Read files
+old <- read_excel("2015-2021.xlsx")
+new <- read_excel("2021-present.xlsx")
+
+# Fix City Columns
+old_fixed <- separate(old, `City, State`, c("City", "State"), ", ")
+
+colnames(new)[colnames(new) == "Business City"] <- "City"
+colnames(new)[colnames(new) == "Business State"] <- "State"
+
+#Combine datasets
+combined_df <- rbind.fill(old_fixed, new)
+
+```
+
+```{r}
+
+
+franklin_county <- c("Ashfield", "Bernardston","Buckland", "Charlemont", "Colrain","Conway", "Deerfield", "Erving", "Gill", "Greenfield", "Hawley", "Heath", "Leverett", "Leyden", "Monroe", "Montague", "New Salem", "Northfield", "Orange", "Rowe", "Shelburne", "Shutesbury", "Sunderland", "Warwick","Wendell", "Whately")
+
+hampshire_county <- c("Amherst", "Belchertown", "Chesterfield","Cummington", "Easthampton", "Goshen","Granby", "Hadley","Hatfield", "Huntington", "Middlefield","Northampton", "Pelham", "Plainfield", "South Hadley", "Southampton", "Ware", "Westhampton", "Williamsburg","Worthington")
+
+hampden_county <- c( "Agawam", "Blandford", "Brimfield", "Chester", "Chicopee", "East Longmeadow", "Granville", "Hampden", "Holland", "Holyoke", "Longmeadow", "Ludlow", "Monson", "Montgomery", "Palmer", "Russell", "Southwick", "Springfield", "Tolland", "West Springfield", "Wales", "Westfield", "Wilbraham")
+
+birkshire_county <- c("Adams", "Alford", "Becket", "Cheshire", "Clarksburg", "Dalton", "Egremont", "Florida", "Great Barrington", "Hancock", "Hinsdale", "Lanesborough", "Lee", "Lenox", "Monterey", "Mount Washington", "New Ashford", "New Marlborough", "North Adams", "Otis", "Peru", "Pittsfield", "Richmond", "Sandisfield", "Savoy", "Sheffield", "Stockbridge", "Tyringham", "Washington", "West Stockbridge", "Williamstown", "Windsor")
+
+#Combine all towns in each western mass county
+western_mass <- c(franklin_county, hampshire_county, hampden_county, birkshire_county)
+
+```
+
+
+
+```{r}
+
+# filter wage violation datasets for violations found in western mass
+western_mass_violations <- combined_df %>% 
+  filter(City %in% western_mass) 
+
+# count number of violations per city found in western mass.
+wm_violations_count <- western_mass_violations %>% 
+  group_by(City, .drop = FALSE) %>% 
+  summarise(
+    count = n()
+  )
+
+```
+
+```{r}
+
+mass_map <- read_sf("./townssurvey_shp/TOWNSSURVEY_POLYM.shp")
+
+western_mass_map <- mass_map %>% 
+    filter(tolower(TOWN) %in% tolower(western_mass)) %>% 
+    rename(City=TOWN)
+
+western_mass_map$City <- tolower(western_mass_map$City)
+western_mass_map$City <- str_to_title(western_mass_map$City)
+
+wm_violations_draft <- merge(western_mass_map, wm_violations_count, by = c("City"),all=T)
+
+
+wm_violations_map <- wm_violations_draft %>% 
+                      mutate(count = replace_na(count, 0))
+
+
+ggplot(western_mass_map) +
+  geom_sf(fill = "#69b3a2", color = "white") +
+  theme_void()
+```
+
+
+```{r}
+
+mypalette <- colorNumeric(
+  palette = "viridis", domain = wm_violations_map$count,
+  na.color = "transparent"
+)
+mypalette(c(45, 43))
+
+
+violations_leaflet <- leaflet(wm_violations_map) %>%
+  addTiles() %>%
+  setView(lat = 42.3454, lng = -72.8988, zoom = 9) %>%
+  addPolygons(fillColor = ~ mypalette(wm_violations_map$count), stroke = FALSE)
+
+violations_leaflet
+
+
+```
+```{r}
+ggplot(wm_violations_map) +
+  geom_sf(aes(fill = count)) +  
+  scale_fill_gradient(low = "#56B1F7", high = "#132B43")
+```
