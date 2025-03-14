@@ -64,6 +64,8 @@ western_mass <- c(franklin_county, hampshire_county, hampden_county, birkshire_c
 western_mass_violations <- combined_df %>% 
   filter(City %in% western_mass) 
 
+names(western_mass_violations)[names(western_mass_violations) == 'Violation Description'] <- 'Violation-Description'
+
 # count number of violations per city found in western mass.
 wm_violations_count <- western_mass_violations %>% 
   group_by(City, .drop = FALSE) %>% 
@@ -71,34 +73,34 @@ wm_violations_count <- western_mass_violations %>%
     count = n()
   )
 
+
 ```
 
 ```{r}
 
+# Loads map of western massachusetts
 mass_map <- read_sf("./townssurvey_shp/TOWNSSURVEY_POLYM.shp")
 
 western_mass_map <- mass_map %>% 
     filter(tolower(TOWN) %in% tolower(western_mass)) %>% 
     rename(City=TOWN)
 
+# Renames the values from the City column to be Capitalized
 western_mass_map$City <- tolower(western_mass_map$City)
 western_mass_map$City <- str_to_title(western_mass_map$City)
 
-wm_violations_draft <- merge(western_mass_map, wm_violations_count, by = c("City"),all=T)
-
+#Merges the map and the count of total number of violations, creating df where number of violations is counted per town
+wm_violations_draft <- merge(western_mass_map, wm_violations_count, by = c("City"), all=T)
 
 wm_violations_map <- wm_violations_draft %>% 
                       mutate(count = replace_na(count, 0))
 
-
-ggplot(western_mass_map) +
-  geom_sf(fill = "#69b3a2", color = "white") +
-  theme_void()
 ```
 
 
 ```{r}
 
+# creates leaflet 
 mypalette <- colorNumeric(
   palette = "viridis", domain = wm_violations_map$count,
   na.color = "transparent"
@@ -118,5 +120,79 @@ violations_leaflet
 ```{r}
 ggplot(wm_violations_map) +
   geom_sf(aes(fill = count)) +  
-  scale_fill_gradient(low = "#56B1F7", high = "#132B43")
+  scale_fill_viridis_c(
+    trans = "log", breaks = c(0, 1, 5, 10, 20, 50, 100),
+    name = "Number of violations",
+    guide = guide_legend(
+      keyheight = unit(3, units = "mm"),
+      keywidth = unit(12, units = "mm"),
+      label.position = "bottom",
+      title.position = "top",
+      nrow = 1
+    )) +
+  labs(
+    title = "Labor violations in Western Masschusetts, 2015-2021",
+    subtitle = "Number of violations per town/city",
+    caption = "Data: Massachusetts Fair Labor Division"
+  )
+```
+
+
+
+```{r}
+ggplot(wm_violations_map) +
+  geom_sf(aes(fill = count)) +  
+  scale_fill_gradient(low = "#56B1F7", high = "#132B43") + 
+  labs(
+    title = "Labor violations in Western Masschusetts, 2015-2021",
+    subtitle = "Number of violations per town/city",
+    caption = "Data: Massachusetts Fair Labor Division"
+  )
+
+```
+
+```{r}
+
+# Group by Violation-Description and count occurrences
+violations_description_count <- western_mass_violations %>% 
+  group_by(`Violation-Description`, .drop = FALSE) %>% 
+  summarise(
+    count = n()
+  )
+
+# Categorize the violations
+categorized_data <- violations_description_count %>%
+  mutate(Category = case_when(
+    grepl("minor|Child Labor", `Violation-Description`, ignore.case = TRUE) ~ "Child Labor Violations",
+    grepl("Minimum Wage|Prevailing Wage|Non-Payment of Wages|Overtime|timely payment", `Violation-Description`, ignore.case = TRUE) ~ "Wage and Payment Violations",
+    grepl("Records|Payroll|Furnish|True and Accurate|Falsification", `Violation-Description`, ignore.case = TRUE) ~ "Record-Keeping Violations",
+    grepl("Sick Time|sick leave|sick time", `Violation-Description`, ignore.case = TRUE) ~ "Sick Time Violations",
+    grepl("Tip|Service Charge", `Violation-Description`, ignore.case = TRUE) ~ "Tip and Service Charge Violations",
+    grepl("Notice|Post", `Violation-Description`, ignore.case = TRUE) ~ "Workplace Notice Violations",
+    grepl("Misclassification|independent contractor", `Violation-Description`, ignore.case = TRUE) ~ "Misclassification Violations",
+    grepl("Retaliation", `Violation-Description`, ignore.case = TRUE) ~ "Retaliation Violations",
+    TRUE ~ "Other Violations"
+  ))
+
+```
+
+
+
+```{r}
+summary_data <- categorized_data %>%
+  group_by(Category) %>%
+  summarize(Total_Count = sum(count, na.rm = TRUE))
+```
+
+
+```{r}
+
+ggplot(summary_data, aes(x = reorder(Category, -Total_Count), y = Total_Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(
+    title = "Labor Violations in Western Mass, 2015-2021",
+    x = "Violation Category",
+    y = "Count of Violations"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better r
 ```
